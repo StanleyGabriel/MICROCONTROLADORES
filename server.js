@@ -6,7 +6,17 @@ const path = require('path');
 //  - Na Vercel: Postgres (Neon) via variavel DATABASE_URL / POSTGRES_URL
 //  - No seu PC (sem essas variaveis): SQLite embutido no Node (arquivo local)
 // =====================================================================
-const DB_URL = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+// Aceita DATABASE_URL / POSTGRES_URL e tambem nomes com prefixo que a Vercel cria
+// ao conectar o Neon (ex.: STORAGE_DATABASE_URL, NEON_DATABASE_URL, XYZ_POSTGRES_URL).
+const acharUrlBanco = () => {
+  const env = process.env;
+  if (env.DATABASE_URL) return env.DATABASE_URL;
+  if (env.POSTGRES_URL) return env.POSTGRES_URL;
+  const chave = Object.keys(env).find((k) => /(^|_)DATABASE_URL$/.test(k))
+             || Object.keys(env).find((k) => /(^|_)POSTGRES_URL$/.test(k));
+  return chave ? env[chave] : null;
+};
+const DB_URL = acharUrlBanco();
 let q; // q(sql, params) -> { rows, count }   (SQL sempre com $1, $2...)
 
 // O banco so e aberto na primeira requisicao: se algo estiver errado, a API responde

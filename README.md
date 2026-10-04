@@ -28,5 +28,5 @@ npm start          # http://localhost:3000
 | Painel | GET | `/api/eventos?limit=50` | histórico |
 
 ## Ligação do LED verde (novo)
-GPIO **27** (terminal S) → resistor 220 Ω → perna longa do LED verde; perna curta → G (GND).
-O botão físico do GPIO 33 não é mais usado.
+GPIO **33** (terminal S) → resistor 220 Ω → perna longa do LED verde; perna curta → G (GND).
+O botão físico foi removido (o caixa é ligado pelo painel). Requests e responses completos: ver `API.md`.

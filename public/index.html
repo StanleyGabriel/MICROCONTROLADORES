@@ -81,8 +81,14 @@
   button.sm:hover { border-color: var(--muted); }
   button.sm.danger { color: var(--bad); }
   .acoes { display: flex; gap: 6px; justify-content: flex-end; }
-  form.add { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .cadastro-box { margin-top: 14px; padding: 14px; border: 1px dashed var(--line); border-radius: 12px; }
+  .cadastro-box h3 { margin: 0 0 10px; font-size: .9rem; }
+  form.add { display: flex; gap: 8px; flex-wrap: wrap; }
   form.add input { flex: 1; }
+  .btn-id { font: inherit; font-weight: 700; font-size: .9rem; width: 100%; padding: 12px; border-radius: 10px; border: 0; cursor: pointer; color: #fff; background: var(--ok); margin-bottom: 10px; }
+  .btn-id.ativo { background: var(--warn); animation: pulse 1.2s infinite; }
+  #idMsg { font-size: .85rem; margin: 0 0 10px; min-height: 1.2em; }
+  #novoUid.preenchido { border-color: var(--ok); background: var(--ok-bg); font-weight: 700; }
   .vazio { color: var(--muted); text-align: center; padding: 18px 0; }
 
   .feed { list-style: none; margin: 0; padding: 0; max-height: 470px; overflow-y: auto; }
@@ -152,11 +158,16 @@
           <tbody id="tags"><tr><td colspan="4" class="vazio">Carregando…</td></tr></tbody>
         </table>
       </div>
-      <form class="add" onsubmit="adicionarManual(event)">
-        <input type="text" id="novoUid" placeholder="UID (ex.: 038757AD)" maxlength="20" required>
-        <input type="text" id="novoNome" placeholder="Nome do produto (ex.: Camiseta)">
-        <button class="sm" type="submit">+ Cadastrar produto</button>
-      </form>
+      <div class="cadastro-box">
+        <h3>Cadastrar produto</h3>
+        <button type="button" id="btnId" class="btn-id" onclick="alternarIdentificar()">📡 Identificar tag</button>
+        <p id="idMsg" class="hint">Clique em "Identificar tag" e aproxime a tag de qualquer leitor. O UID é preenchido sozinho.</p>
+        <form class="add" onsubmit="adicionarManual(event)">
+          <input type="text" id="novoUid" placeholder="UID (preenchido ao identificar)" maxlength="20" required>
+          <input type="text" id="novoNome" placeholder="Nome do produto (ex.: Camiseta)">
+          <button class="sm" type="submit">+ Cadastrar</button>
+        </form>
+      </div>
     </section>
 
     <section class="card">
@@ -184,7 +195,7 @@ const ehHoje = (s) => data(s)?.toDateString() === new Date().toDateString();
 const TIPOS = {
   PASSAGEM_OK:        ['SAIU OK', 'b-ok', 'paga, saiu pelo portal'],
   ALARME:             ['ALARME', 'b-bad', 'NÃO PAGA passou pelo portal'],
-  DESCONHECIDA:       ['ALARME', 'b-bad', 'sem cadastro passou pelo portal'],
+  DESCONHECIDA:       ['SEM CADASTRO', 'b-warn', 'passou pelo portal (não é produto: ignorada, sem alarme)'],
   PAGAMENTO:          ['PAGA', 'b-info', 'foi paga no caixa'],
   CAIXA_DESCONHECIDA: ['SEM CADASTRO', 'b-warn', 'lida no caixa, mas não está cadastrada'],
   PRODUTO:            ['CADASTRO', 'b-info', 'cadastrada como produto'],
@@ -193,11 +204,12 @@ const TIPOS = {
   RESET:              ['RESET', 'b-warn', 'Demonstração reiniciada: todas as tags voltaram a não pagas'],
   LEITURA_ON:         ['CAIXA ON', 'b-info', 'Leitura do caixa iniciada'],
   LEITURA_OFF:        ['CAIXA OFF', 'b-warn', 'Leitura do caixa parada'],
+  IDENTIFICADA:       ['IDENTIFICADA', 'b-info', 'foi identificada para cadastro'],
   // eventos antigos (versão anterior)
   CADASTRO:           ['LIBERADA', 'b-info', 'foi liberada'],
   BLOQUEIO:           ['BLOQUEADA', 'b-warn', 'foi bloqueada'],
 };
-const EV_PORTAL = ['PASSAGEM_OK', 'ALARME', 'DESCONHECIDA'];
+const EV_PORTAL = ['PASSAGEM_OK', 'ALARME', 'DESCONHECIDA'];  // DESCONHECIDA: só informativo
 const EV_TAGS = ['PAGAMENTO', 'PRODUTO', 'ESTORNO', 'REMOCAO', 'RESET', 'CADASTRO'];
 
 let status = { cadastroAtivo: false, esp32Online: false };
@@ -224,7 +236,54 @@ function mostrarErro(e) {
 }
 
 // ---------- Status / botão de leitura ----------
+// ---------- Identificar tag ----------
+let idPedidoEm = null;   // true enquanto espera a leitura
+let idAnterior = null;    // identificação que já existia antes do clique
+function renderIdentificar() {
+  const btn = $('btnId'), msg = $('idMsg');
+  if (status.identificando) {
+    const resta = Math.max(0, Math.round((new Date(status.identificarAte) - Date.now()) / 1000));  // aproximado
+    btn.className = 'btn-id ativo';
+    btn.textContent = `⏳ Aproxime a tag de um leitor… (${resta}s) — clique para cancelar`;
+    msg.textContent = status.esp32Online ? 'Aguardando a leitura de uma tag (sem alarme neste modo).' : 'Atenção: o ESP32 está offline.';
+  } else {
+    btn.className = 'btn-id';
+    btn.textContent = '📡 Identificar tag';
+  }
+  const id = status.identificada;
+  if (idPedidoEm && id && id.em !== idAnterior) {
+    idPedidoEm = null;
+    $('novoUid').value = id.uid;
+    $('novoUid').classList.add('preenchido');
+    if (id.cadastrada) {
+      $('novoNome').value = id.nome || '';
+      msg.innerHTML = `Tag <code>${esc(id.uid)}</code> <b>já está cadastrada</b>${id.nome ? ' como <b>' + esc(id.nome) + '</b>' : ''}. Pode mudar o nome e salvar.`;
+    } else {
+      $('novoNome').value = '';
+      msg.innerHTML = `Tag <code>${esc(id.uid)}</code> identificada! Agora digite o nome do produto e clique em <b>Cadastrar</b>.`;
+    }
+    $('novoNome').focus();
+    toast('Tag ' + id.uid + ' identificada');
+  } else if (idPedidoEm && !status.identificando) {
+    idPedidoEm = null;
+    msg.textContent = 'Nenhuma tag lida a tempo. Clique em "Identificar tag" de novo.';
+  }
+}
+
+async function alternarIdentificar() {
+  const ativar = !status.identificando;
+  try {
+    idAnterior = status.identificada ? status.identificada.em : null;
+    status = await api('/identificar', { method: 'POST', body: JSON.stringify({ ativo: ativar }) });
+    idPedidoEm = ativar ? true : null;
+    if (ativar) { $('novoUid').value = ''; $('novoUid').classList.remove('preenchido'); }
+    else $('idMsg').textContent = 'Identificação cancelada.';
+    renderIdentificar();
+  } catch (e) { toast('Erro: ' + e.message); }
+}
+
 function renderStatus() {
+  renderIdentificar();
   const esp = $('esp');
   esp.className = 'pill ' + (status.esp32Online ? 'on' : 'off');
   $('espTxt').textContent = status.esp32Online
@@ -275,7 +334,7 @@ async function carregarTags(forcar = false) {
         <button class="sm" onclick="alterar('${esc(t.uid)}', ${t.liberada ? 0 : 1})">${t.liberada ? 'Estornar' : 'Marcar paga'}</button>
         <button class="sm danger" onclick="remover('${esc(t.uid)}')">Remover</button>
       </div></td>
-    </tr>`).join('') : '<tr><td colspan="4" class="vazio">Nenhum produto cadastrado. Passe as tags em qualquer leitor e clique em "Cadastrar" nos eventos, ou digite o UID abaixo.</td></tr>';
+    </tr>`).join('') : '<tr><td colspan="4" class="vazio">Nenhum produto cadastrado. Use o botão <b>📡 Identificar tag</b> abaixo para cadastrar as tags.</td></tr>';
 }
 
 async function acao(promessa, msg) {
@@ -294,7 +353,8 @@ function adicionarManual(ev) {
   const uid = $('novoUid').value.trim().toUpperCase().replace(/[^0-9A-F]/g, '');
   const nome = $('novoNome').value.trim() || undefined;
   acao(api('/tags', { method: 'POST', body: JSON.stringify({ uid, nome }) }), 'Produto cadastrado (não pago)');
-  $('novoUid').value = ''; $('novoNome').value = '';
+  $('novoUid').value = ''; $('novoNome').value = ''; $('novoUid').classList.remove('preenchido');
+  $('idMsg').textContent = 'Produto salvo. Clique em "Identificar tag" para cadastrar a próxima.';
 }
 
 // ---------- Eventos / portal ----------
@@ -303,11 +363,11 @@ function nomeOuUid(e) { return e.nome ? `<b>${esc(e.nome)}</b> <code>${esc(e.uid
 function renderPortal(e) {
   const p = $('portal');
   if (!e) return;
-  const ok = e.tipo === 'PASSAGEM_OK';
-  const titulo = ok ? 'Paga — pode sair' : e.tipo === 'DESCONHECIDA' ? 'ALARME — tag sem cadastro!' : 'ALARME — produto não pago!';
-  p.className = 'portal ' + (ok ? 'ok' : 'bad');
+  const ok = e.tipo === 'PASSAGEM_OK', desconhecida = e.tipo === 'DESCONHECIDA';
+  const titulo = ok ? 'Paga — pode sair' : desconhecida ? 'Tag sem cadastro — ignorada' : 'ALARME — produto não pago!';
+  p.className = 'portal ' + (ok ? 'ok' : desconhecida ? '' : 'bad');
   p.innerHTML = `
-    <div class="icone">${ok ? '✅' : '🚨'}</div>
+    <div class="icone">${ok ? '✅' : desconhecida ? '❔' : '🚨'}</div>
     <div class="titulo">${titulo}</div>
     <div class="sub">${nomeOuUid(e)} · ${hora(e.data)}</div>`;
 }
@@ -325,7 +385,7 @@ async function carregarEventos() {
 
   const hoje = evs.filter((e) => ehHoje(e.data));
   $('sOk').textContent = hoje.filter((e) => e.tipo === 'PASSAGEM_OK').length;
-  $('sAl').textContent = hoje.filter((e) => e.tipo === 'ALARME' || e.tipo === 'DESCONHECIDA').length;
+  $('sAl').textContent = hoje.filter((e) => e.tipo === 'ALARME').length;
 
   // Tags pagas desde o último "LEITURA_ON"
   const lidas = [];

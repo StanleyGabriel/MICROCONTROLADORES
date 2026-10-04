@@ -69,7 +69,7 @@ const SCHEMA = [
 // Fluxo:  1) produtos (tags) sao cadastrados antes, pelo painel, como NAO PAGOS
 //         2) no caixa (leitor 2, ligado pelo painel) a tag lida vira PAGA = liberada
 //         3) no portal (leitor 1): paga -> passa | nao paga ou desconhecida -> alarme
-// Tipos de evento: PRODUTO | PAGAMENTO | ESTORNO | REMOCAO | RESET | PASSAGEM_OK | ALARME
+// Tipos de evento: IDENTIFICADA | PRODUTO | PAGAMENTO | ESTORNO | REMOCAO | RESET | PASSAGEM_OK | ALARME
 //                  | DESCONHECIDA (tag sem cadastro no portal) | CAIXA_DESCONHECIDA | LEITURA_ON | LEITURA_OFF
 
 let pronto;
@@ -86,11 +86,38 @@ const setConfig = (chave, valor) => q(
 
 const ONLINE_MS = 15000; // ESP32 e considerado online se falou com a API nos ultimos 15 s
 
+const IDENTIFICAR_MS = 60000; // modo "identificar tag" desliga sozinho depois de 60 s
+
+async function identificando() {
+  const ate = Number(await getConfig('identificar_ate')) || 0;
+  return ate > Date.now();
+}
+
+// Guarda a tag lida no modo identificar (o painel usa para preencher o UID)
+async function registrarIdentificacao(uid) {
+  await setConfig('identificar_ate', 0);            // um disparo so
+  await setConfig('ultima_identificada', JSON.stringify({ uid, em: Date.now() }));
+  await logEvento(uid, 'IDENTIFICADA');
+  const tag = await getTag(uid);
+  return { uid, identificar: true, liberada: false, cadastrada: !!tag, nome: tag ? tag.nome : null };
+}
+
 async function statusSistema() {
   const ativo = (await getConfig('cadastro_ativo')) === '1';
   const visto = await getConfig('esp32_visto');
   const online = !!visto && Date.now() - Number(visto) < ONLINE_MS;
-  return { cadastroAtivo: ativo, esp32Online: online, esp32VistoEm: visto ? new Date(Number(visto)).toISOString() : null };
+  const ate = Number(await getConfig('identificar_ate')) || 0;
+  let identificada = null;
+  try { identificada = JSON.parse(await getConfig('ultima_identificada')); } catch { /* vazio */ }
+  if (identificada) {
+    const tag = await getTag(identificada.uid);
+    identificada = { ...identificada, em: new Date(identificada.em).toISOString(), cadastrada: !!tag, nome: tag ? tag.nome : null };
+  }
+  return {
+    cadastroAtivo: ativo, esp32Online: online, esp32VistoEm: visto ? new Date(Number(visto)).toISOString() : null,
+    identificando: ate > Date.now(), identificarAte: ate > Date.now() ? new Date(ate).toISOString() : null,
+    identificada,
+  };
 }
 
 // =====================================================================
@@ -123,15 +150,18 @@ const r = (fn) => (req, res, next) => fn(req, res, next).catch(next);
 // Leitor 1 (portal): a tag pode sair?
 app.get('/api/tags/:uid/verificar', r(async (req, res) => {
   const uid = norm(req.params.uid);
+  if (await identificando()) return res.json(await registrarIdentificacao(uid));   // modo identificar: sem alarme
   const tag = await getTag(uid);
   const liberada = !!(tag && tag.liberada);
+  // Tag sem cadastro nao e produto da loja: so registra, sem alarme
   await logEvento(uid, liberada ? 'PASSAGEM_OK' : (tag ? 'ALARME' : 'DESCONHECIDA'));
-  res.json({ uid, liberada, cadastrada: !!tag, nome: tag ? tag.nome : null });
+  res.json({ uid, liberada, cadastrada: !!tag, alarme: !!tag && !liberada, nome: tag ? tag.nome : null });
 }));
 
 // Leitor 2 (caixa): marca a tag como PAGA. So funciona para tags ja cadastradas.
 app.post('/api/tags/:uid/pagar', r(async (req, res) => {
   const uid = norm(req.params.uid);
+  if (await identificando()) return res.json(await registrarIdentificacao(uid));   // modo identificar: nao paga
   const tag = await getTag(uid);
   if (!tag) {
     await logEvento(uid, 'CAIXA_DESCONHECIDA');
@@ -146,12 +176,23 @@ app.post('/api/tags/:uid/pagar', r(async (req, res) => {
 // e, de quebra, avisa que esta online.
 app.get('/api/dispositivo/comando', r(async (_req, res) => {
   await setConfig('esp32_visto', Date.now());
-  res.json({ cadastroAtivo: (await getConfig('cadastro_ativo')) === '1' });
+  res.json({ cadastroAtivo: (await getConfig('cadastro_ativo')) === '1', identificar: await identificando() });
 }));
 
 // ---------- Painel (front) ----------
 
 app.get('/api/status', r(async (_req, res) => res.json(await statusSistema())));
+
+// Diagnostico: qual banco esta em uso e quantos registros ha em cada tabela
+app.get('/api/saude', r(async (_req, res) => {
+  const contar = async (t) => Number((await q(`SELECT COUNT(*) AS n FROM ${t}`)).rows[0].n);
+  res.json({
+    ok: true,
+    banco: DB_URL ? 'Postgres (Neon)' : 'SQLite local',
+    host: DB_URL ? (DB_URL.match(/@([^/:?]+)/) || [])[1] : null,
+    tabelas: { tags: await contar('tags'), eventos: await contar('eventos'), config: await contar('config') },
+  });
+}));
 
 // Liga/desliga a leitura do leitor do caixa.  Body: { "ativo": true | false }
 app.post('/api/cadastro', r(async (req, res) => {
@@ -159,6 +200,14 @@ app.post('/api/cadastro', r(async (req, res) => {
   const antes = (await getConfig('cadastro_ativo')) === '1';
   await setConfig('cadastro_ativo', ativo ? '1' : '0');
   if (ativo !== antes) await logEvento('-', ativo ? 'LEITURA_ON' : 'LEITURA_OFF');
+  res.json(await statusSistema());
+}));
+
+// Modo "identificar tag": a proxima tag lida em QUALQUER leitor so e identificada
+// (sem alarme, sem pagamento) e o painel preenche o UID.  Body: { "ativo": true | false }
+app.post('/api/identificar', r(async (req, res) => {
+  const ativo = req.body.ativo !== false;
+  await setConfig('identificar_ate', ativo ? Date.now() + IDENTIFICAR_MS : 0);
   res.json(await statusSistema());
 }));
 

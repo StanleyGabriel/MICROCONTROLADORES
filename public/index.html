@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Antifurto RFID — Painel</title>
+<style>
+  :root {
+    --bg: #f3f4f6; --card: #ffffff; --text: #111827; --muted: #6b7280; --line: #e5e7eb;
+    --ok: #16a34a; --ok-bg: #dcfce7; --bad: #dc2626; --bad-bg: #fee2e2;
+    --info: #2563eb; --info-bg: #dbeafe; --warn: #b45309; --warn-bg: #fef3c7;
+    --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b0f17; --card: #141a24; --text: #e5e7eb; --muted: #9ca3af; --line: #253041;
+      --ok: #22c55e; --ok-bg: #0f2e1b; --bad: #f87171; --bad-bg: #3a1414;
+      --info: #60a5fa; --info-bg: #10233f; --warn: #fbbf24; --warn-bg: #3a2a0b;
+      --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 20px 16px 40px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+  h1 { font-size: 1.45rem; margin: 0; }
+  h1 small { display: block; font-size: .8rem; font-weight: 400; color: var(--muted); margin-top: 2px; }
+  h2 { font-size: 1rem; margin: 0 0 12px; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; font-size: .85rem; font-weight: 600; }
+  .pill .dot { width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
+  .pill.on { color: var(--ok); background: var(--ok-bg); }
+  .pill.on .dot { animation: pulse 1.6s infinite; }
+  .pill.off { color: var(--muted); background: var(--line); }
+  @keyframes pulse { 50% { opacity: .35; } }
+
+  .grid { display: grid; gap: 16px; }
+  .top { grid-template-columns: minmax(0,1.1fr) minmax(0,1fr); }
+  .bottom { grid-template-columns: minmax(0,1.4fr) minmax(0,1fr); margin-top: 16px; }
+  @media (max-width: 860px) { .top, .bottom { grid-template-columns: minmax(0,1fr); } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; box-shadow: var(--shadow); min-width: 0; }
+
+  /* Controle do leitor de cadastro */
+  .control { display: flex; flex-direction: column; gap: 14px; }
+  .control-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .estado { font-size: .85rem; font-weight: 700; padding: 4px 10px; border-radius: 6px; }
+  .estado.on { color: var(--info); background: var(--info-bg); }
+  .estado.off { color: var(--muted); background: var(--line); }
+  .btn-big { width: 100%; border: 0; border-radius: 12px; padding: 18px; font-size: 1.1rem; font-weight: 700; cursor: pointer; color: #fff; transition: transform .05s, opacity .2s; }
+  .btn-big:active { transform: scale(.99); }
+  .btn-big:disabled { opacity: .6; cursor: wait; }
+  .btn-big.start { background: var(--info); }
+  .btn-big.stop { background: var(--bad); }
+  .hint { font-size: .85rem; color: var(--muted); margin: 0; }
+  .lidas { display: flex; flex-wrap: wrap; gap: 6px; min-height: 28px; }
+  .chip { font-family: ui-monospace, Consolas, monospace; font-size: .8rem; padding: 4px 8px; border-radius: 6px; background: var(--ok-bg); color: var(--ok); }
+
+  /* Portal */
+  .portal { display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; gap: 6px; min-height: 200px; border-radius: 14px; transition: background .3s; }
+  .portal .icone { font-size: 2.6rem; line-height: 1; }
+  .portal .titulo { font-size: 1.35rem; font-weight: 800; }
+  .portal .sub { color: var(--muted); font-size: .9rem; }
+  .portal.ok { background: var(--ok-bg); } .portal.ok .titulo { color: var(--ok); }
+  .portal.bad { background: var(--bad-bg); animation: piscar .5s 6; } .portal.bad .titulo { color: var(--bad); }
+  @keyframes piscar { 50% { opacity: .55; } }
+
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; margin-top: 16px; }
+  @media (max-width: 640px) { .stats { grid-template-columns: repeat(2, minmax(0,1fr)); } .portal .titulo { font-size: 1.1rem; } }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; box-shadow: var(--shadow); }
+  .stat b { display: block; font-size: 1.6rem; }
+  .stat span { font-size: .8rem; color: var(--muted); }
+
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  th { text-align: left; font-size: .75rem; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); font-weight: 600; padding: 8px 6px; border-bottom: 1px solid var(--line); }
+  td { padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  tr:last-child td { border-bottom: 0; }
+  .table-wrap { overflow-x: auto; }
+  code { font-family: ui-monospace, Consolas, monospace; font-size: .85rem; }
+  .tag-ok { color: var(--ok); font-weight: 700; } .tag-bad { color: var(--bad); font-weight: 700; }
+  input[type=text] { font: inherit; font-size: .85rem; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--text); width: 100%; min-width: 90px; }
+  button.sm { font: inherit; font-size: .8rem; padding: 5px 9px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--text); cursor: pointer; white-space: nowrap; }
+  button.sm:hover { border-color: var(--muted); }
+  button.sm.danger { color: var(--bad); }
+  .acoes { display: flex; gap: 6px; justify-content: flex-end; }
+  form.add { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  form.add input { flex: 1; }
+  .vazio { color: var(--muted); text-align: center; padding: 18px 0; }
+
+  .feed { list-style: none; margin: 0; padding: 0; max-height: 470px; overflow-y: auto; }
+  .feed li { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: .88rem; }
+  .feed li:last-child { border-bottom: 0; }
+  .badge { flex-shrink: 0; font-size: .7rem; font-weight: 700; padding: 3px 7px; border-radius: 6px; min-width: 92px; text-align: center; }
+  .b-ok { color: var(--ok); background: var(--ok-bg); } .b-bad { color: var(--bad); background: var(--bad-bg); }
+  .b-info { color: var(--info); background: var(--info-bg); } .b-warn { color: var(--warn); background: var(--warn-bg); }
+  .feed .hora { margin-left: auto; color: var(--muted); font-size: .78rem; white-space: nowrap; }
+
+  #toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: #111827; color: #fff; padding: 10px 16px; border-radius: 10px; font-size: .9rem; opacity: 0; transition: opacity .25s; pointer-events: none; max-width: calc(100% - 32px); }
+  #toast.show { opacity: 1; }
+  #erroApi { display: none; margin-bottom: 14px; padding: 10px 14px; border-radius: 10px; background: var(--warn-bg); color: var(--warn); font-size: .9rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Sistema Antifurto RFID<small>ESP32 + 2 leitores RC522</small></h1>
+    <span id="esp" class="pill off"><span class="dot"></span><span id="espTxt">ESP32 offline</span></span>
+  </header>
+
+  <div id="erroApi"></div>
+
+  <div class="grid top">
+    <!-- Caixa -->
+    <section class="card control">
+      <div class="control-head">
+        <h2 style="margin:0">Caixa (leitor 2)</h2>
+        <span id="estado" class="estado off">DESLIGADO</span>
+      </div>
+      <button id="btnLeitura" class="btn-big start" onclick="alternarLeitura()">▶ Iniciar leitura</button>
+      <p id="hintLeitura" class="hint">Inicie a leitura do caixa e passe no leitor 2 as tags que foram pagas.</p>
+      <div>
+        <p class="hint" style="margin-bottom:6px">Pagas nesta sessão do caixa:</p>
+        <div id="lidas" class="lidas"><span class="hint">nenhuma ainda</span></div>
+      </div>
+    </section>
+
+    <!-- Portal -->
+    <section class="card">
+      <h2>Portal (leitor 1)</h2>
+      <div id="portal" class="portal">
+        <div class="icone">📡</div>
+        <div class="titulo">Aguardando passagem</div>
+        <div class="sub">Passe uma tag no leitor 1</div>
+      </div>
+    </section>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><b id="sTags">–</b><span>produtos cadastrados</span></div>
+    <div class="stat"><b id="sLib">–</b><span>pagos (podem sair)</span></div>
+    <div class="stat"><b id="sOk" style="color:var(--ok)">–</b><span>passagens OK (hoje)</span></div>
+    <div class="stat"><b id="sAl" style="color:var(--bad)">–</b><span>alarmes (hoje)</span></div>
+  </div>
+
+  <div class="grid bottom">
+    <section class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px">
+        <h2 style="margin:0">Produtos (tags)</h2>
+        <button class="sm" onclick="resetar()" title="Todas as tags voltam a não pagas">↺ Reiniciar demonstração</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>UID</th><th>Produto</th><th>Pagamento</th><th></th></tr></thead>
+          <tbody id="tags"><tr><td colspan="4" class="vazio">Carregando…</td></tr></tbody>
+        </table>
+      </div>
+      <form class="add" onsubmit="adicionarManual(event)">
+        <input type="text" id="novoUid" placeholder="UID (ex.: 038757AD)" maxlength="20" required>
+        <input type="text" id="novoNome" placeholder="Nome do produto (ex.: Camiseta)">
+        <button class="sm" type="submit">+ Cadastrar produto</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Eventos</h2>
+      <ul id="feed" class="feed"><li class="vazio">Carregando…</li></ul>
+    </section>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+// Mesmo servidor por padrão. Aberto como arquivo local -> usa a API da Vercel.
+// Também dá para forçar: index.html?api=http://192.168.0.10:3000
+const PADRAO = 'https://microcontroladores-ashen.vercel.app';
+const API = (new URLSearchParams(location.search).get('api') || (location.protocol === 'file:' ? PADRAO : '')).replace(/\/$/, '') + '/api';
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+// Aceita "2026-10-04T06:16:09Z" (ISO) e "2026-10-04 03:16:09" (formato antigo, hora local)
+const data = (s) => (s ? new Date(/^\d{4}-\d\d-\d\d \d/.test(s) ? s.replace(' ', 'T') : s) : null);
+const hora = (s) => data(s)?.toLocaleTimeString('pt-BR') ?? '';
+const ehHoje = (s) => data(s)?.toDateString() === new Date().toDateString();
+
+const TIPOS = {
+  PASSAGEM_OK:        ['SAIU OK', 'b-ok', 'paga, saiu pelo portal'],
+  ALARME:             ['ALARME', 'b-bad', 'NÃO PAGA passou pelo portal'],
+  DESCONHECIDA:       ['ALARME', 'b-bad', 'sem cadastro passou pelo portal'],
+  PAGAMENTO:          ['PAGA', 'b-info', 'foi paga no caixa'],
+  CAIXA_DESCONHECIDA: ['SEM CADASTRO', 'b-warn', 'lida no caixa, mas não está cadastrada'],
+  PRODUTO:            ['CADASTRO', 'b-info', 'cadastrada como produto'],
+  ESTORNO:            ['ESTORNO', 'b-warn', 'voltou a não paga'],
+  REMOCAO:            ['REMOVIDA', 'b-warn', 'foi removida'],
+  RESET:              ['RESET', 'b-warn', 'Demonstração reiniciada: todas as tags voltaram a não pagas'],
+  LEITURA_ON:         ['CAIXA ON', 'b-info', 'Leitura do caixa iniciada'],
+  LEITURA_OFF:        ['CAIXA OFF', 'b-warn', 'Leitura do caixa parada'],
+  // eventos antigos (versão anterior)
+  CADASTRO:           ['LIBERADA', 'b-info', 'foi liberada'],
+  BLOQUEIO:           ['BLOQUEADA', 'b-warn', 'foi bloqueada'],
+};
+const EV_PORTAL = ['PASSAGEM_OK', 'ALARME', 'DESCONHECIDA'];
+const EV_TAGS = ['PAGAMENTO', 'PRODUTO', 'ESTORNO', 'REMOCAO', 'RESET', 'CADASTRO'];
+
+let status = { cadastroAtivo: false, esp32Online: false };
+let ultimoIdVisto = null, ultimoTagsJson = '', ocupado = false, tagsConhecidas = new Set();
+
+async function api(caminho, opts = {}) {
+  const r = await fetch(API + caminho, { headers: { 'Content-Type': 'application/json' }, ...opts });
+  if (r.status === 204) return null;
+  const corpo = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(corpo.detalhe || corpo.erro || `HTTP ${r.status}`);
+  return corpo;
+}
+
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+function mostrarErro(e) {
+  const box = $('erroApi');
+  if (!e) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  box.textContent = `Não foi possível falar com a API (${API}): ${e.message}`;
+}
+
+// ---------- Status / botão de leitura ----------
+function renderStatus() {
+  const esp = $('esp');
+  esp.className = 'pill ' + (status.esp32Online ? 'on' : 'off');
+  $('espTxt').textContent = status.esp32Online
+    ? 'ESP32 online'
+    : status.esp32VistoEm ? `ESP32 offline (visto às ${hora(status.esp32VistoEm)})` : 'ESP32 offline';
+
+  const on = status.cadastroAtivo;
+  $('estado').className = 'estado ' + (on ? 'on' : 'off');
+  $('estado').textContent = on ? 'LENDO' : 'DESLIGADO';
+  const btn = $('btnLeitura');
+  btn.className = 'btn-big ' + (on ? 'stop' : 'start');
+  btn.textContent = on ? '■ Parar leitura do caixa' : '▶ Iniciar leitura do caixa';
+  $('hintLeitura').textContent = on
+    ? (status.esp32Online ? 'Caixa ligado: passe no leitor 2 as tags pagas — elas ficam liberadas para sair.' : 'Leitura ativada — o ESP32 vai ligar o leitor 2 assim que ficar online.')
+    : 'Inicie a leitura do caixa e passe no leitor 2 as tags que foram pagas.';
+}
+
+async function alternarLeitura() {
+  const btn = $('btnLeitura'); btn.disabled = true;
+  try {
+    status = await api('/cadastro', { method: 'POST', body: JSON.stringify({ ativo: !status.cadastroAtivo }) });
+    renderStatus();
+    toast(status.cadastroAtivo ? 'Caixa ligado' : 'Caixa desligado');
+    carregarEventos();
+  } catch (e) { toast('Erro: ' + e.message); }
+  btn.disabled = false;
+}
+
+// ---------- Tags ----------
+async function carregarTags(forcar = false) {
+  const tags = await api('/tags');
+  const lib = tags.filter((t) => t.liberada).length;
+  tagsConhecidas = new Set(tags.map((t) => t.uid));
+  $('sTags').textContent = tags.length; $('sLib').textContent = lib;
+
+  const json = JSON.stringify(tags);
+  const editando = document.activeElement?.closest?.('#tags');
+  if (!forcar && (json === ultimoTagsJson || editando)) return;
+  ultimoTagsJson = json;
+
+  $('tags').innerHTML = tags.length ? tags.map((t) => `
+    <tr>
+      <td><code>${esc(t.uid)}</code></td>
+      <td><input type="text" value="${esc(t.nome)}" placeholder="nome do produto…"
+                 onchange="renomear('${esc(t.uid)}', this.value)" onkeydown="if(event.key==='Enter')this.blur()"></td>
+      <td class="${t.liberada ? 'tag-ok' : 'tag-bad'}">${t.liberada ? 'Paga ✓' : 'Não paga'}</td>
+      <td><div class="acoes">
+        <button class="sm" onclick="alterar('${esc(t.uid)}', ${t.liberada ? 0 : 1})">${t.liberada ? 'Estornar' : 'Marcar paga'}</button>
+        <button class="sm danger" onclick="remover('${esc(t.uid)}')">Remover</button>
+      </div></td>
+    </tr>`).join('') : '<tr><td colspan="4" class="vazio">Nenhum produto cadastrado. Passe as tags em qualquer leitor e clique em "Cadastrar" nos eventos, ou digite o UID abaixo.</td></tr>';
+}
+
+async function acao(promessa, msg) {
+  try { await promessa; toast(msg); } catch (e) { toast('Erro: ' + e.message); }
+  carregarTags(true); carregarEventos();
+}
+const alterar = (uid, liberada) => acao(api('/tags/' + uid, { method: 'PATCH', body: JSON.stringify({ liberada }) }), liberada ? 'Marcada como paga' : 'Pagamento estornado');
+const resetar = () => confirm('Reiniciar a demonstração? Todas as tags voltam a NÃO PAGAS.') && acao(api('/tags/resetar', { method: 'POST' }), 'Demonstração reiniciada');
+// Botão "Cadastrar" nos eventos de tag desconhecida: preenche o formulário
+function prepararCadastro(uid) { $('novoUid').value = uid; $('novoNome').focus(); $('novoNome').scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+const renomear = (uid, nome) => acao(api('/tags/' + uid, { method: 'PATCH', body: JSON.stringify({ nome }) }), 'Nome salvo');
+const remover = (uid) => confirm(`Remover a tag ${uid}?`) && acao(api('/tags/' + uid, { method: 'DELETE' }), 'Tag removida');
+
+function adicionarManual(ev) {
+  ev.preventDefault();
+  const uid = $('novoUid').value.trim().toUpperCase().replace(/[^0-9A-F]/g, '');
+  const nome = $('novoNome').value.trim() || undefined;
+  acao(api('/tags', { method: 'POST', body: JSON.stringify({ uid, nome }) }), 'Produto cadastrado (não pago)');
+  $('novoUid').value = ''; $('novoNome').value = '';
+}
+
+// ---------- Eventos / portal ----------
+function nomeOuUid(e) { return e.nome ? `<b>${esc(e.nome)}</b> <code>${esc(e.uid)}</code>` : `<code>${esc(e.uid)}</code>`; }
+
+function renderPortal(e) {
+  const p = $('portal');
+  if (!e) return;
+  const ok = e.tipo === 'PASSAGEM_OK';
+  const titulo = ok ? 'Paga — pode sair' : e.tipo === 'DESCONHECIDA' ? 'ALARME — tag sem cadastro!' : 'ALARME — produto não pago!';
+  p.className = 'portal ' + (ok ? 'ok' : 'bad');
+  p.innerHTML = `
+    <div class="icone">${ok ? '✅' : '🚨'}</div>
+    <div class="titulo">${titulo}</div>
+    <div class="sub">${nomeOuUid(e)} · ${hora(e.data)}</div>`;
+}
+
+async function carregarEventos() {
+  const evs = await api('/eventos?limit=60');
+
+  $('feed').innerHTML = evs.length ? evs.map((e) => {
+    const [rot, cls, txt] = TIPOS[e.tipo] || [e.tipo, 'b-info', ''];
+    const corpo = e.uid === '-' ? txt : `Tag ${nomeOuUid(e)} ${txt}`;
+    const semCadastro = (e.tipo === 'DESCONHECIDA' || e.tipo === 'CAIXA_DESCONHECIDA') && !tagsConhecidas.has(e.uid);
+    const botao = semCadastro ? ` <button class="sm" onclick="prepararCadastro('${esc(e.uid)}')">Cadastrar</button>` : '';
+    return `<li><span class="badge ${cls}">${rot}</span><span>${corpo}${botao}</span><span class="hora">${hora(e.data)}</span></li>`;
+  }).join('') : '<li class="vazio">Nenhum evento ainda.</li>';
+
+  const hoje = evs.filter((e) => ehHoje(e.data));
+  $('sOk').textContent = hoje.filter((e) => e.tipo === 'PASSAGEM_OK').length;
+  $('sAl').textContent = hoje.filter((e) => e.tipo === 'ALARME' || e.tipo === 'DESCONHECIDA').length;
+
+  // Tags pagas desde o último "LEITURA_ON"
+  const lidas = [];
+  for (const e of evs) {
+    if (e.tipo === 'LEITURA_ON') break;
+    if (e.tipo === 'PAGAMENTO' && !lidas.some((x) => x.uid === e.uid)) lidas.push(e);
+  }
+  $('lidas').innerHTML = status.cadastroAtivo && lidas.length
+    ? lidas.map((e) => `<span class="chip">${esc(e.nome || e.uid)}</span>`).join('')
+    : '<span class="hint">nenhuma ainda</span>';
+
+  // Último evento do portal + aviso de novidade
+  const portal = evs.find((e) => EV_PORTAL.includes(e.tipo));
+  const novo = evs[0];
+  if (ultimoIdVisto === null) { renderPortal(portal); }
+  else if (novo && novo.id !== ultimoIdVisto) {
+    const novos = evs.filter((e) => e.id > ultimoIdVisto);
+    if (novos.some((e) => EV_PORTAL.includes(e.tipo))) renderPortal(portal);
+    if (novos.some((e) => EV_TAGS.includes(e.tipo))) carregarTags(true);
+  }
+  if (novo) ultimoIdVisto = novo.id;
+}
+
+async function ciclo() {
+  if (ocupado) return;
+  ocupado = true;
+  try {
+    status = await api('/status');
+    renderStatus();
+    await carregarEventos();
+    mostrarErro(null);
+  } catch (e) { mostrarErro(e); }
+  ocupado = false;
+}
+
+ciclo();
+carregarTags(true).catch(mostrarErro);
+setInterval(ciclo, 1500);
+setInterval(() => carregarTags().catch(() => {}), 5000);
+</script>
+</body>
+</html>

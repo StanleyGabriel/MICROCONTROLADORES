@@ -1,0 +1,16 @@
+{
+  "name": "antifurto-rfid-api",
+  "version": "2.0.0",
+  "description": "API do sistema antifurto RFID (ESP32)",
+  "main": "server.js",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.13.1"
+  }
+}

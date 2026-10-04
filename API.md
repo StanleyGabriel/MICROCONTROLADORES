@@ -14,15 +14,15 @@ GET /api/tags/038757AD/verificar
 ```
 Grava evento `PASSAGEM_OK`, `ALARME` ou `DESCONHECIDA`.
 
-### POST `/tags/:uid/pagar` — caixa (leitor 2)
+### POST `/tags/:uid/pagar` — caixa (leitor 2): cadastra (se nova) e marca como PAGA
 ```
 POST /api/tags/038757AD/pagar     body: {}
-200 {"uid":"038757AD","nome":"Camiseta","liberada":1,"criada_em":"2026-10-04T06:44:45.337Z","jaEstavaPaga":false}
-404 {"erro":"Tag nao cadastrada","uid":"DEADBEEF"}
+200 {"uid":"038757AD","nome":null,"liberada":1,"criada_em":"...","novo":true,"jaEstavaPaga":false}        (tag nova: cadastrada e paga)
+200 {"uid":"038757AD","nome":"Camiseta","liberada":1,"criada_em":"...","novo":false,"jaEstavaPaga":false} (já cadastrada: paga)
 ```
-Grava evento `PAGAMENTO` (ou `CAIXA_DESCONHECIDA` no 404).
+Grava `PRODUTO` (se nova) e `PAGAMENTO`. O portal (leitor 1) nunca cadastra nada.
 
-### GET `/dispositivo/comando` — consultada a cada 1,5 s
+### GET `/dispositivo/comando` — consultada a cada 3 s
 ```
 200 {"cadastroAtivo":true,"identificar":false}
 ```
@@ -43,11 +43,11 @@ body: {"ativo":true}
 
 ### POST `/identificar` — modo "identificar tag" (botão do painel)
 ```
-body: {"ativo":true}     -> a PRÓXIMA tag lida em qualquer leitor só é identificada (sem alarme, sem pagar). Expira em 60 s.
+body: {"ativo":true}     -> a PRÓXIMA tag lida no leitor 2 (caixa) só é identificada (sem pagar). Expira em 60 s.
 body: {"ativo":false}    -> cancela
 200 {...status..., "identificando":true, "identificarAte":"...", "identificada":{"uid":"038757AD","em":"...","cadastrada":false,"nome":null}}
 ```
-Enquanto o modo está ativo, `/tags/:uid/verificar` e `/tags/:uid/pagar` respondem
+Enquanto o modo está ativo, `/tags/:uid/pagar` responde
 `200 {"uid":"038757AD","identificar":true,"liberada":false,"cadastrada":false,"nome":null}` e gravam o evento `IDENTIFICADA`.
 O `/status` passa a trazer `identificando`, `identificarAte` e `identificada` (última tag identificada).
 

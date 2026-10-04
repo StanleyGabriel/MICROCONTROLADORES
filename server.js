@@ -66,9 +66,9 @@ const SCHEMA = [
      valor TEXT
    )`,
 ];
-// Fluxo:  1) produtos (tags) sao cadastrados antes, pelo painel, como NAO PAGOS
-//         2) no caixa (leitor 2, ligado pelo painel) a tag lida vira PAGA = liberada
-//         3) no portal (leitor 1): paga -> passa | nao paga ou desconhecida -> alarme
+// Fluxo:  1) CAIXA (leitor 2, ligado pelo painel): a tag lida e cadastrada (se for nova) e vira PAGA = liberada
+//         2) PORTAL (leitor 1): so verifica -> paga: passa | cadastrada e nao paga: ALARME | sem cadastro: ignora
+//         3) Painel: da nome aos produtos, estorna, reinicia a demo (todas voltam a nao pagas)
 // Tipos de evento: IDENTIFICADA | PRODUTO | PAGAMENTO | ESTORNO | REMOCAO | RESET | PASSAGEM_OK | ALARME
 //                  | DESCONHECIDA (tag sem cadastro no portal) | CAIXA_DESCONHECIDA | LEITURA_ON | LEITURA_OFF
 
@@ -150,7 +150,6 @@ const r = (fn) => (req, res, next) => fn(req, res, next).catch(next);
 // Leitor 1 (portal): a tag pode sair?
 app.get('/api/tags/:uid/verificar', r(async (req, res) => {
   const uid = norm(req.params.uid);
-  if (await identificando()) return res.json(await registrarIdentificacao(uid));   // modo identificar: sem alarme
   const tag = await getTag(uid);
   const liberada = !!(tag && tag.liberada);
   // Tag sem cadastro nao e produto da loja: so registra, sem alarme
@@ -161,15 +160,17 @@ app.get('/api/tags/:uid/verificar', r(async (req, res) => {
 // Leitor 2 (caixa): marca a tag como PAGA. So funciona para tags ja cadastradas.
 app.post('/api/tags/:uid/pagar', r(async (req, res) => {
   const uid = norm(req.params.uid);
-  if (await identificando()) return res.json(await registrarIdentificacao(uid));   // modo identificar: nao paga
+  if (await identificando()) return res.json(await registrarIdentificacao(uid));   // modo identificar: so identifica
   const tag = await getTag(uid);
   if (!tag) {
-    await logEvento(uid, 'CAIXA_DESCONHECIDA');
-    return res.status(404).json({ erro: 'Tag nao cadastrada', uid });
+    // Tag nova: o caixa cadastra e ja libera (o nome do produto e dado depois, no painel)
+    await q('INSERT INTO tags (uid, nome, liberada) VALUES ($1, NULL, 1)', [uid]);
+    await logEvento(uid, 'PRODUTO');
+  } else {
+    await q('UPDATE tags SET liberada = 1 WHERE uid = $1', [uid]);
   }
-  await q('UPDATE tags SET liberada = 1 WHERE uid = $1', [uid]);
   await logEvento(uid, 'PAGAMENTO');
-  res.json({ ...(await getTag(uid)), jaEstavaPaga: !!tag.liberada });
+  res.json({ ...(await getTag(uid)), novo: !tag, jaEstavaPaga: !!(tag && tag.liberada) });
 }));
 
 // O ESP32 chama a cada ~1,5 s: recebe se o leitor do caixa deve estar ligado

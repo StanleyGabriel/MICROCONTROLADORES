@@ -121,7 +121,7 @@
         <span id="estado" class="estado off">DESLIGADO</span>
       </div>
       <button id="btnLeitura" class="btn-big start" onclick="alternarLeitura()">▶ Iniciar leitura</button>
-      <p id="hintLeitura" class="hint">Inicie a leitura do caixa e passe no leitor 2 as tags que foram pagas.</p>
+      <p id="hintLeitura" class="hint">Inicie a leitura do caixa e passe as tags no leitor 2 para cadastrar e liberar.</p>
       <div>
         <p class="hint" style="margin-bottom:6px">Pagas nesta sessão do caixa:</p>
         <div id="lidas" class="lidas"><span class="hint">nenhuma ainda</span></div>
@@ -159,13 +159,13 @@
         </table>
       </div>
       <div class="cadastro-box">
-        <h3>Cadastrar produto</h3>
+        <h3>Nome do produto</h3>
         <button type="button" id="btnId" class="btn-id" onclick="alternarIdentificar()">📡 Identificar tag</button>
-        <p id="idMsg" class="hint">Clique em "Identificar tag" e aproxime a tag de qualquer leitor. O UID é preenchido sozinho.</p>
+        <p id="idMsg" class="hint">Ligue o caixa e passe a tag no leitor 2: ela é cadastrada e o UID aparece aqui para você dar o nome. Ou use "Identificar tag" para cadastrar sem marcar como paga.</p>
         <form class="add" onsubmit="adicionarManual(event)">
           <input type="text" id="novoUid" placeholder="UID (preenchido ao identificar)" maxlength="20" required>
           <input type="text" id="novoNome" placeholder="Nome do produto (ex.: Camiseta)">
-          <button class="sm" type="submit">+ Cadastrar</button>
+          <button class="sm" type="submit">Salvar nome</button>
         </form>
       </div>
     </section>
@@ -198,7 +198,7 @@ const TIPOS = {
   DESCONHECIDA:       ['SEM CADASTRO', 'b-warn', 'passou pelo portal (não é produto: ignorada, sem alarme)'],
   PAGAMENTO:          ['PAGA', 'b-info', 'foi paga no caixa'],
   CAIXA_DESCONHECIDA: ['SEM CADASTRO', 'b-warn', 'lida no caixa, mas não está cadastrada'],
-  PRODUTO:            ['CADASTRO', 'b-info', 'cadastrada como produto'],
+  PRODUTO:            ['CADASTRO', 'b-info', 'cadastrada'],
   ESTORNO:            ['ESTORNO', 'b-warn', 'voltou a não paga'],
   REMOCAO:            ['REMOVIDA', 'b-warn', 'foi removida'],
   RESET:              ['RESET', 'b-warn', 'Demonstração reiniciada: todas as tags voltaram a não pagas'],
@@ -244,8 +244,8 @@ function renderIdentificar() {
   if (status.identificando) {
     const resta = Math.max(0, Math.round((new Date(status.identificarAte) - Date.now()) / 1000));  // aproximado
     btn.className = 'btn-id ativo';
-    btn.textContent = `⏳ Aproxime a tag de um leitor… (${resta}s) — clique para cancelar`;
-    msg.textContent = status.esp32Online ? 'Aguardando a leitura de uma tag (sem alarme neste modo).' : 'Atenção: o ESP32 está offline.';
+    btn.textContent = `⏳ Aproxime a tag do leitor 2 (caixa)… (${resta}s) — clique para cancelar`;
+    msg.textContent = status.esp32Online ? 'Aproxime a tag do leitor 2 (caixa). Ela só será identificada, sem marcar como paga.' : 'Atenção: o ESP32 está offline.';
   } else {
     btn.className = 'btn-id';
     btn.textContent = '📡 Identificar tag';
@@ -297,8 +297,8 @@ function renderStatus() {
   btn.className = 'btn-big ' + (on ? 'stop' : 'start');
   btn.textContent = on ? '■ Parar leitura do caixa' : '▶ Iniciar leitura do caixa';
   $('hintLeitura').textContent = on
-    ? (status.esp32Online ? 'Caixa ligado: passe no leitor 2 as tags pagas — elas ficam liberadas para sair.' : 'Leitura ativada — o ESP32 vai ligar o leitor 2 assim que ficar online.')
-    : 'Inicie a leitura do caixa e passe no leitor 2 as tags que foram pagas.';
+    ? (status.esp32Online ? 'Caixa ligado: passe as tags no leitor 2 — são cadastradas (se novas) e liberadas para sair.' : 'Leitura ativada — o ESP32 vai ligar o leitor 2 assim que ficar online.')
+    : 'Inicie a leitura do caixa e passe as tags no leitor 2 para cadastrar e liberar.';
 }
 
 async function alternarLeitura() {
@@ -334,7 +334,7 @@ async function carregarTags(forcar = false) {
         <button class="sm" onclick="alterar('${esc(t.uid)}', ${t.liberada ? 0 : 1})">${t.liberada ? 'Estornar' : 'Marcar paga'}</button>
         <button class="sm danger" onclick="remover('${esc(t.uid)}')">Remover</button>
       </div></td>
-    </tr>`).join('') : '<tr><td colspan="4" class="vazio">Nenhum produto cadastrado. Use o botão <b>📡 Identificar tag</b> abaixo para cadastrar as tags.</td></tr>';
+    </tr>`).join('') : '<tr><td colspan="4" class="vazio">Nenhuma tag cadastrada. Clique em <b>Iniciar leitura do caixa</b> e passe as tags no leitor 2.</td></tr>';
 }
 
 async function acao(promessa, msg) {
@@ -352,7 +352,7 @@ function adicionarManual(ev) {
   ev.preventDefault();
   const uid = $('novoUid').value.trim().toUpperCase().replace(/[^0-9A-F]/g, '');
   const nome = $('novoNome').value.trim() || undefined;
-  acao(api('/tags', { method: 'POST', body: JSON.stringify({ uid, nome }) }), 'Produto cadastrado (não pago)');
+  acao(api('/tags', { method: 'POST', body: JSON.stringify({ uid, nome }) }), 'Nome salvo');
   $('novoUid').value = ''; $('novoNome').value = ''; $('novoUid').classList.remove('preenchido');
   $('idMsg').textContent = 'Produto salvo. Clique em "Identificar tag" para cadastrar a próxima.';
 }
@@ -405,6 +405,15 @@ async function carregarEventos() {
     const novos = evs.filter((e) => e.id > ultimoIdVisto);
     if (novos.some((e) => EV_PORTAL.includes(e.tipo))) renderPortal(portal);
     if (novos.some((e) => EV_TAGS.includes(e.tipo))) carregarTags(true);
+    // Tag nova cadastrada pelo caixa (ainda sem nome): já abre o campo para dar o nome
+    const nova = novos.find((e) => e.tipo === 'PRODUTO' && !e.nome);
+    if (nova && !$('novoUid').value && document.activeElement !== $('novoNome')) {
+      $('novoUid').value = nova.uid;
+      $('novoUid').classList.add('preenchido');
+      $('idMsg').innerHTML = `Tag nova <code>${esc(nova.uid)}</code> cadastrada no caixa! Digite o nome do produto e clique em <b>Salvar nome</b>.`;
+      $('novoNome').focus();
+      toast('Tag nova no caixa: ' + nova.uid);
+    }
   }
   if (novo) ultimoIdVisto = novo.id;
 }

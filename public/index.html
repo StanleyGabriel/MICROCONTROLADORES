@@ -398,7 +398,11 @@ async function carregarEventos() {
     : '<span class="hint">nenhuma ainda</span>';
 
   // Último evento do portal + aviso de novidade
-  const portal = evs.find((e) => EV_PORTAL.includes(e.tipo));
+  // Último evento do portal; se houve ALARME até 5 s antes dele, o alarme tem prioridade
+  // (ex.: passaram juntas uma tag paga e uma não paga)
+  const ultimoPortal = evs.find((e) => EV_PORTAL.includes(e.tipo));
+  const alarmeRecente = ultimoPortal && evs.find((e) => e.tipo === 'ALARME' && data(ultimoPortal.data) - data(e.data) <= 5000);
+  const portal = alarmeRecente || ultimoPortal;
   const novo = evs[0];
   if (ultimoIdVisto === null) { renderPortal(portal); }
   else if (novo && novo.id !== ultimoIdVisto) {

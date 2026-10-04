@@ -9,17 +9,27 @@ const path = require('path');
 const DB_URL = process.env.DATABASE_URL || process.env.POSTGRES_URL;
 let q; // q(sql, params) -> { rows, count }   (SQL sempre com $1, $2...)
 
+// O banco so e aberto na primeira requisicao: se algo estiver errado, a API responde
+// com a mensagem do erro (em vez de a funcao inteira cair na Vercel).
 if (DB_URL) {
-  const { Pool } = require('pg');
-  const pool = new Pool({ connectionString: DB_URL, ssl: { rejectUnauthorized: false }, max: 3 });
+  let pool;
   q = async (sql, params = []) => {
+    if (!pool) {
+      const { Pool } = require('pg');
+      pool = new Pool({ connectionString: DB_URL, ssl: { rejectUnauthorized: false }, max: 3 });
+    }
     const r = await pool.query(sql, params);
     return { rows: r.rows, count: r.rowCount };
   };
 } else {
-  const { DatabaseSync } = require('node:sqlite');
-  const db = new DatabaseSync(path.join(__dirname, 'antifurto.db'));
+  let db;
   q = async (sql, params = []) => {
+    if (!db) {
+      if (process.env.VERCEL) throw new Error(
+        'DATABASE_URL nao configurada. Na Vercel: Storage -> Neon -> conectar ao projeto e fazer Redeploy.');
+      const { DatabaseSync } = require('node:sqlite');
+      db = new DatabaseSync(path.join(__dirname, 'antifurto.db'));
+    }
     const stmt = db.prepare(sql.replace(/\$\d+/g, '?'));
     if (/^\s*(SELECT|WITH)|RETURNING/i.test(sql)) return { rows: stmt.all(...params).map(r => ({ ...r })), count: 0 };
     const r = stmt.run(...params);
